@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Farming App</title>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    .farming-window {
+      position: fixed;
+      top: 50px;
+      left: 50px;
+      width: 400px;
+      height: 500px;
+      max-width: 100vw;
+      max-height: 100vh;
+      background: rgba(30, 30, 30, 0.9);
+      color: white;
+      border-radius: 12px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+      padding: 20px;
+      resize: both;
+      overflow: hidden;
+      cursor: move;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+    }
+
+    h1 {
+      font-size: 20px;
+      margin: 0 0 10px;
+      text-align: center;
+    }
+
+    input, button, select {
+      width: 100%;
+      padding: 8px 10px;
+      margin-bottom: 10px;
+      border-radius: 6px;
+      border: none;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    input {
+      background-color: #222;
+      color: white;
+      border: 1px solid #555;
+    }
+
+    button {
+      background-color: #1e90ff;
+      color: white;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background-color: #0070e0;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    #fields-container {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-width: none;
+    }
+
+    #fields-container::-webkit-scrollbar {
+      display: none;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .field-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .field {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .field h3 {
+      margin: 0 0 5px;
+      font-size: 15px;
+    }
+
+    .field p {
+      margin: 2px 0;
+      color: #ddd;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="farming-window" id="farming-app">
+  <h1>Farming Tracker</h1>
+
+  <div class="controls">
+    <button onclick="fetchData()">Refresh</button>
+    <button onclick="toggleLayout()" id="layoutBtn">Grid Layout</button>
+
+    <label for="refresh-interval">Auto Refresh:</label>
+    <select id="refresh-interval">
+      <option value="0">Off</option>
+      <option value="1000">Every 1s</option>
+      <option value="60000">Every 1m</option>
+      <option value="600000">Every 10m</option>
+      <option value="3600000">Every 1h</option>
+    </select>
+  </div>
+
+  <div id="fields-container" class="field-list"></div>
+</div>
+
+<script>
+let layoutMode = localStorage.getItem('layoutMode') || 'list';
+let autoRefreshInterval = null;
+let fieldsData = [];
+
+const app = document.getElementById('farming-app');
+const intervalSelect = document.getElementById('refresh-interval');
+const layoutBtn = document.getElementById('layoutBtn');
+
+layoutBtn.textContent = layoutMode === 'grid' ? 'List Layout' : 'Grid Layout';
+
+function getData() {
+  window.parent.postMessage({ type: 'getData' }, '*');
+}
+
+window.addEventListener("message", (event) => {
+  const evt = event.data;
+  if (evt && evt.data && evt.data.pkey) {
+    fetchData(evt.data.pkey);
+  }
+});
+
+async function fetchData(pkey) {
+  try {
+    const response = await fetch("https://api.goobie.uk/beta/farming/fields", {
+      headers: { "x-tycoon-public-key": pkey }
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      fieldsData = data.data.fields;
+      displayData(fieldsData);
+    } else {
+      console.error(await response.text());
+    }
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+function toggleLayout() {
+  layoutMode = layoutMode === 'list' ? 'grid' : 'list';
+  layoutBtn.textContent = layoutMode === 'grid' ? 'List Layout' : 'Grid Layout';
+  localStorage.setItem('layoutMode', layoutMode);
+  displayData(fieldsData);
+}
+
+function formatTime(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return `${h}h ${m}m ${s}s`;
+}
+
+function displayData(fields) {
+  const container = document.getElementById("fields-container");
+  container.innerHTML = '';
+  container.className = layoutMode === 'grid' ? 'field-grid' : 'field-list';
+
+  const now = Math.floor(Date.now() / 1000);
+
+  fields.forEach(field => {
+    if (!field.isOwned) return;
+
+    const div = document.createElement("div");
+    div.className = "field";
+
+    const timeLeft = (field.time_planted + field.growth_time) - now;
+
+    div.innerHTML = `
+      <h3>${field.name}</h3>
+      <p><strong>Seed:</strong> ${field.seed || 'None'}</p>
+      <p><strong>State:</strong> ${field.state}</p>
+      <p><strong>Time Left:</strong> ${timeLeft > 0 ? formatTime(timeLeft) : 'Ready'}</p>
+    `;
+
+    container.appendChild(div);
+  });
+}
+
+getData();
+</script>
+
+</body>
+</html>
